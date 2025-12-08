@@ -6,6 +6,17 @@ import json
 from requests.auth import HTTPBasicAuth
 
 
+#TABLE CREATION 
+def create_tables()
+    conn = sqlite3.connect("weather_crashes.db")
+    cur = conn.cursor()
+
+    cur.execute(""" CREATE TABLE IF NOT EXISTS crash_info (id INTEGER PRIMARY KEY AUTOINCREMENT, collision_id TEXT, location TEXT, crash_date TEXT)""")
+
+    cur.execute("""CREATE TABLE IF NOT EXISTS crash_more(crash_info_id INTEGER, number_of_persons_injured INTEGER, number_of_persons_killed INTEGER, FOREIGN KEY(crash_info_id) REFERENCES crash_info(id))""")
+
+    conn.commit()
+    conn.close()
 
 
 
@@ -13,14 +24,14 @@ from requests.auth import HTTPBasicAuth
 
 
 
-
-
-
-
+#API CALLS RIGHT BELOW
 API_KEY = "2o031k1p3cq0m8kauzmvfjk0c"
 API_SECRET = "5nj1sx54lui1b33s5ive0odx58p7yxwhnxyb4gtq8cwuso51i6"
 
 url = "https://data.cityofnewyork.us/api/v3/views/h9gi-nx95/query.json"
+
+
+
 
 def fetch_nyc_crashes(limit=25, where=None, select=None):
     params = {"$limit": limit}
@@ -36,7 +47,7 @@ def fetch_nyc_crashes(limit=25, where=None, select=None):
     
     response.raise_for_status()
     
- 
+#DATA INSERTION
 def insert_crash_info(crash):
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
