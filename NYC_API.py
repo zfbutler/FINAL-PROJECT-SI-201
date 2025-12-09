@@ -150,3 +150,55 @@ def insert_crash_more(crash, crash_info_id):
     
     conn.commit()
     conn.close()
+
+def main():
+    create_tables()
+
+    conn = sqlite3.connect("weather_crashes.db")
+    cur = conn.cursor()
+    cur.execute("SELECT collision_id FROM crash_info")
+    existing_ids = set(row[0] for row in cur.fetchall())
+    conn.close()
+
+
+    skipped_dupes = 0 
+    skipped_dirty = 0 
+    new_data = []
+    batch_size = 50
+    offset = 0
+
+    while len(new_data) < 25:
+        raw_data = fetch_nyc_crashes(limit=batch_size, order ="crash_date DESC")
+        if not raw_data:
+            break
+
+        cleaned_data = check_crash_data(raw_data)
+    
+
+        for crash in cleaned_data:
+            if crash['collision_id'] in existing_ids:
+                skipped_dupes += 1
+                continue 
+            if len(new_data) < 25:
+                new_data.append(crash)
+            else:   
+                break
+        skipped_dirty = len(cleaned_data) - skipped_dupes - len(new_data)
+
+        if len(raw_data) < batch_size:
+            break
+        offset += batch_size
+
+    for crash in new_data:
+        crash_info_id = insert_crash_info(crash)
+        if crash_info_id == 0:
+            conn = sqlite3.connect("weather_crashes.db")
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM crash_info WHERE collision_id=?", (crash['collision_id'],))
+            crash_info_id = cur.fetchone()[0]
+            conn.close()
+        insert_crash_more(crash, crash_info_id)
+    
+    
+    print(f"put {len(new_data)} new records into the db this run.")
+    print(f"Skipped {skipped_dupes} dupes and {skipped_dirty} unclean rows ")
