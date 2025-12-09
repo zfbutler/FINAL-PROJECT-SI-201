@@ -40,29 +40,34 @@ def create_tables():
 
 
 #API CALLS RIGHT BELOW
-API_KEY = "2o031k1p3cq0m8kauzmvfjk0c"
-API_SECRET = "5nj1sx54lui1b33s5ive0odx58p7yxwhnxyb4gtq8cwuso51i6"
-
-url = "https://data.cityofnewyork.us/api/v3/views/h9gi-nx95/query.json"
+API_KEY = "6ayvS2Y0kYuSCGwdmTNcIjPuj"
 
 
+url = "https://data.cityofnewyork.us/resource/h9gi-nx95.json"
 
 
-def fetch_nyc_crashes(limit=25, where=None, select=None, order=None):
-    params = {"$limit": limit}
+
+
+
+def fetch_nyc_crashes(limit=25,offset=0, where=None, select=None, order=None):
+    params = {"$limit": limit, "$offset": offset}
     if where:
         params["$where"] = where
     if select:
         params["$select"] = select
     if order:
         params["$order"] = order
-
+    
     headers = {"X-App-Token": API_KEY}
-    response = requests.get(url, params=params, headers=headers)
-    response.raise_for_status()
-
-    return response.json()
-
+    try:    
+        response = requests.get(url, params=params, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP error: {e}")
+    except requests.exceptions.RequestException as e:
+        print(f"You dont have access kid")
+    return []
     
 #DATA CLEANING 
 
@@ -79,7 +84,7 @@ def check_crash_data(api_data):
                 continue
             dt_str = f"{crash_date}T{crash_time}:00.000"
             try:
-                dt = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S.")
+                dt = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S.%f")
                 crash_date_str= dt.strftime("%Y-%m-%d")
             except ValueError:
                 continue 
@@ -160,34 +165,27 @@ def main():
     existing_ids = set(row[0] for row in cur.fetchall())
     conn.close()
 
+    batch_size = 100
+    raw_data = fetch_nyc_crashes(limit=batch_size, order="crash_date DESC")
+    if not raw_data:
+        print("No data returned from API.")
+        return
 
-    skipped_dupes = 0 
-    skipped_dirty = 0 
+    cleaned_data = check_crash_data(raw_data)
+
     new_data = []
-    batch_size = 50
-    offset = 0
+    skipped_dupes = 0
+    skipped_dirty = 0
 
-    while len(new_data) < 25:
-        raw_data = fetch_nyc_crashes(limit=batch_size, order ="crash_date DESC")
-        if not raw_data:
+    for crash in cleaned_data:
+        if crash['collision_id'] in existing_ids:
+            skipped_dupes += 1
+            continue
+        new_data.append(crash)
+        if len(new_data) >= 25:
             break
 
-        cleaned_data = check_crash_data(raw_data)
-    
-
-        for crash in cleaned_data:
-            if crash['collision_id'] in existing_ids:
-                skipped_dupes += 1
-                continue 
-            if len(new_data) < 25:
-                new_data.append(crash)
-            else:   
-                break
-        skipped_dirty = len(cleaned_data) - skipped_dupes - len(new_data)
-
-        if len(raw_data) < batch_size:
-            break
-        offset += batch_size
+    skipped_dirty = len(cleaned_data) - skipped_dupes - len(new_data)
 
     for crash in new_data:
         crash_info_id = insert_crash_info(crash)
@@ -198,7 +196,25 @@ def main():
             crash_info_id = cur.fetchone()[0]
             conn.close()
         insert_crash_more(crash, crash_info_id)
-    
-    
-    print(f"put {len(new_data)} new records into the db this run.")
-    print(f"Skipped {skipped_dupes} dupes and {skipped_dirty} unclean rows ")
+
+    print(f"Put {len(new_data)} new records into the DB this run.")
+    print(f"Skipped {skipped_dupes} duplicates and {skipped_dirty} unclean rows.")
+
+    # === Debug Info ===
+    print("\n=== Debug Info ===")
+    print(f"Total cleaned rows ready to insert: {len(new_data)}")
+    for i, crash in enumerate(new_data[:5]):  # show first 5 for brevity
+        print(f"{i+1}: {crash}")
+
+    # Check the actual DB content
+    conn = sqlite3.connect("weather_crashes.db")
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM crash_info ORDER BY id DESC LIMIT 5")  # last 5 inserted rows
+    rows = cur.fetchall()
+    print("\nLast rows in crash_info table:")
+    for row in rows:
+        print(row)
+    conn.close()
+
+if __name__ == "__main__":
+    main()
