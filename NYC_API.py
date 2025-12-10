@@ -311,9 +311,9 @@ def main():
     "2025-12-04",
     "2025-12-05",
     "2025-12-06",
-    "2025-12-07",
-    "2025-12-08",
-    "2025-12-09"]
+    "2025-10-05",
+    "2025-10-10",
+    "2025-10-23"]
     for date_str in target_dates[:25]:
         where_clause = f"crash_date >= '{date_str}T00:00:00' AND crash_date < '{date_str}T23:59:59'"
         raw_data = fetch_nyc_crashes(limit=batch_size, where=where_clause)
