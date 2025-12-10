@@ -6,6 +6,13 @@ import json
 from requests.auth import HTTPBasicAuth
 from datetime import datetime
 
+def clear_db():
+    conn = sqlite3.connect("weather_crashes.db")
+    cur = conn.cursor()
+    cur.execute("DROP TABLE IF EXISTS crash_more")
+    cur.execute("DROP TABLE IF EXISTS crash_info")
+    conn.commit()
+    conn.close()
 
 #TABLE CREATION 
 def create_tables():
@@ -82,15 +89,20 @@ def check_crash_data(api_data):
 
             if not collision_id or not location or not crash_date or not crash_time:
                 continue
-            dt_str = f"{crash_date}T{crash_time}:00.000"
-            try:
-                dt = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S.%f")
-                crash_date_str= dt.strftime("%Y-%m-%d")
-            except ValueError:
-                continue 
 
-            if not(6 <= dt.hour < 18):
-                continue 
+           
+            date_part = crash_date.split("T")[0]      
+            time_part = crash_time                    
+
+            try:
+                dt = datetime.strptime(f"{date_part} {time_part}", "%Y-%m-%d %H:%M")
+            except ValueError:
+                continue
+
+            crash_date_str = date_part  
+
+            if not (6 <= dt.hour < 18):
+                continue
 
             try:
                 number_of_persons_injured = int(row.get("number_of_persons_injured", 0))
@@ -156,7 +168,39 @@ def insert_crash_more(crash, crash_info_id):
     conn.commit()
     conn.close()
 
+def get_crashes_for_dates(dates):
+    conn = sqlite3.connect("weather_crashes.db")
+    cur = conn.cursor()
+
+    holders = ",".join("?" for _ in dates)
+    query = f"""
+        SELECT ci.id, ci.collision_id, ci.location, ci.crash_date,
+               cm.number_of_persons_injured, cm.number_of_persons_killed
+        FROM crash_info ci
+        JOIN crash_more cm ON ci.id = cm.crash_info_id
+        WHERE ci.crash_date IN ({holders})
+    """
+    cur.execute(query,dates)
+    rows = cur.fetchall()
+    conn.close()
+
+    crashes = []
+    for r in rows:
+        crashes.append({
+            "id": r[0],
+            "collision_id": r[1],
+            "location": r[2],
+            "crash_date": r[3],
+            "number_of_persons_injured": r[4],
+            "number_of_persons_killed": r[5]
+        })
+    return crashes
+
+
+
+
 def main():
+    clear_db()
     create_tables()
 
     conn = sqlite3.connect("weather_crashes.db")
@@ -166,12 +210,17 @@ def main():
     conn.close()
 
     batch_size = 100
-    raw_data = fetch_nyc_crashes(limit=batch_size, order="crash_date DESC")
-    if not raw_data:
+    target_dates = ["2023-01-15", "2023-01-16", "2023-01-17"]
+    all_raw_data = []
+    for d in target_dates:
+        where_clause = f"crash_date >= '{d}T00:00:00' AND crash_date < '{d}T23:59:59'"
+        raw_data = fetch_nyc_crashes(limit=batch_size, where=where_clause)
+        all_raw_data.extend(raw_data)
+    if not all_raw_data:
         print("No data returned from API.")
         return
 
-    cleaned_data = check_crash_data(raw_data)
+    cleaned_data = check_crash_data(all_raw_data)
 
     new_data = []
     skipped_dupes = 0
@@ -200,21 +249,11 @@ def main():
     print(f"Put {len(new_data)} new records into the DB this run.")
     print(f"Skipped {skipped_dupes} duplicates and {skipped_dirty} unclean rows.")
 
-    # === Debug Info ===
+    """# === Debug Info ===
     print("\n=== Debug Info ===")
     print(f"Total cleaned rows ready to insert: {len(new_data)}")
     for i, crash in enumerate(new_data[:5]):  # show first 5 for brevity
-        print(f"{i+1}: {crash}")
-
-    # Check the actual DB content
-    conn = sqlite3.connect("weather_crashes.db")
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM crash_info ORDER BY id DESC LIMIT 5")  # last 5 inserted rows
-    rows = cur.fetchall()
-    print("\nLast rows in crash_info table:")
-    for row in rows:
-        print(row)
-    conn.close()
+        print(f"{i+1}: {crash}")"""
 
 if __name__ == "__main__":
     main()
