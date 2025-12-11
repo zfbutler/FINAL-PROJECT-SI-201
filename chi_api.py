@@ -1,0 +1,190 @@
+# Name: Isaac Abrams
+# Student ID: 9683 2526
+# Email: isaacab
+# List who you have worked with on this file: Assistance from Zeke Butler
+# List any AI tool (e.g. ChatGPT, GitHub Copilot): ChatGPT for help with the datetime library as well as the parameters for accessing the API
+
+import sqlite3
+import requests
+from requests.auth import HTTPBasicAuth
+from datetime import datetime
+
+def clear_chi_tables():
+    """Drop all tables in the weather_crashes.db database."""
+    conn = sqlite3.connect("weather_crashes.db")
+    cur = conn.cursor()
+
+    tables = ["chi_injury_stats", "chi_date_info"]
+    for table in tables:
+        cur.execute(f"DROP TABLE IF EXISTS {table}")
+
+    conn.commit()
+    conn.close()
+    print("All tables cleared.")
+
+def create_tables():
+    conn = sqlite3.connect("weather_crashes.db")
+    cur = conn.cursor()
+
+
+    # Table 1: date_info with total_crashes
+    cur.execute(""" 
+        CREATE TABLE IF NOT EXISTS chi_date_info (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT UNIQUE,
+            total_crashes INTEGER
+        )
+    """)
+
+    # Table 2: injury_stats
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS chi_injury_stats (
+            date_id INTEGER PRIMARY KEY,
+            total_injuries INTEGER,
+            total_killed INTEGER,
+            FOREIGN KEY(date_id) REFERENCES date_info(id)
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+API_URL = "https://data.cityofchicago.org/resource/85ca-t3if.json"
+API_KEY = "Ftd7Qvrkm1OCOu5lR8kkBJSnb"
+
+def fetch_chi_crashes(limit=1000, offset=0, where=None, select=None, order=None):
+    params = {"$limit": limit, "$offset": offset}
+    if where:
+        params["$where"] = where
+    if select:
+        params["$select"] = select
+    if order:
+        params["$order"] = order
+    
+    headers = {"X-App-Token": API_KEY}
+    try:    
+        response = requests.get(API_URL, params=params, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP error: {e}")
+    except requests.exceptions.RequestException as e:
+        print("Access is not granted!")
+    return []
+
+def collect_crash_data(api_data):
+    total_crashes = 0
+    total_injuries = 0 
+    total_fatalities = 0
+
+    for entry in api_data:
+        try:
+            #api date-time data excluding milliseconds
+            pulled_crash_dt = entry.get("crash_date").split(".")[0]
+            if not pulled_crash_dt:
+                continue
+            dt = datetime.strptime(pulled_crash_dt, "%Y-%m-%dT%H:%M:%S")
+
+            #filter for only daytime hours
+            if not (6 < dt.hour < 18):
+                continue
+
+            #increment crash count
+            total_crashes += 1
+            
+            try:
+                total_injuries += int(entry.get("injuries_total", 0))
+            except:
+                pass
+            
+
+            try:
+                total_fatalities += int(entry.get("injuries_fatal", 0))
+            except:
+                pass
+
+        except:
+            continue
+
+    return total_crashes, total_injuries, total_fatalities
+
+#inserts data into the chi_data_data and returns a 
+def insert_date_data(date_str, total_crashes):
+    conn = sqlite3.connect("weather_crashes.db")
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT OR IGNORE INTO chi_date_info (date, total_crashes)
+        VALUES (?, ?)
+    """, (date_str, total_crashes))
+
+    # Get the date_id
+    cur.execute("SELECT id FROM chi_date_info WHERE date = ?", (date_str,))
+    date_id = cur.fetchone()[0]
+
+    conn.commit()
+    conn.close()
+    return date_id
+
+def insert_injury_data(date_id, total_injuries, total_fatalities):
+    
+    conn = sqlite3.connect("weather_crashes.db")
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT OR REPLACE INTO chi_injury_stats (date_id, total_injuries, total_killed)
+        VALUES (?, ?, ?)
+    """, (date_id, total_injuries, total_fatalities))
+
+    conn.commit()
+    conn.close()
+
+def main():
+    clear_chi_tables()
+    create_tables()
+
+    batch_size = 1000
+    target_dates = [
+    "2025-11-15",
+    "2025-11-16",
+    "2025-11-17",
+    "2025-11-18",
+    "2025-11-19",
+    "2025-11-20",
+    "2025-11-21",
+    "2025-11-22",
+    "2025-11-23",
+    "2025-11-24",
+    "2025-11-25",
+    "2025-11-26",
+    "2025-11-27",
+    "2025-11-28",
+    "2025-11-29",
+    "2025-11-30",
+    "2025-12-01",
+    "2025-12-02",
+    "2025-12-03",
+    "2025-12-04",
+    "2025-12-05",
+    "2025-12-06",
+    "2025-10-05",
+    "2025-10-10",
+    "2025-10-23"]
+
+    for date_str in target_dates[:25]:
+        where_clause = f"crash_date >= '{date_str}T00:00:00' AND crash_date < '{date_str}T23:59:59'"
+        raw_data = fetch_chi_crashes(limit=batch_size, where=where_clause)
+
+        if not raw_data:
+            print(f"No data returned from {date_str}.")
+            continue
+
+        total_crashes, total_injuries, total_fatalities = collect_crash_data(raw_data)
+        date_id = insert_date_data(date_str, total_crashes)
+        insert_injury_data(date_id, total_injuries, total_fatalities)
+
+        print(f"Inserted data for {date_str}")
+
+if __name__ == "__main__":
+    main()
