@@ -206,6 +206,15 @@ def rainy_vs_dry_barchart(data):
     plt.show()
 
 
+
+
+
+
+
+
+
+
+
 def main():
     loaded_data = load_data_for_analysis()
     chi_crash_weather_corr(loaded_data)

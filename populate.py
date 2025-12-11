@@ -40,21 +40,21 @@ def main(run_clear):
     print(f"Found {len(master_dates)} days that work")
 
     
-    new_weather_dates = populate_weather_for_dates(master_dates, max_days=25)
+    new_weather_dates = populate_weather_for_dates(master_dates, max_days=6)
     if not new_weather_dates:
         print("No new weather dates")
         return
     print(f"Weather populated for {len(new_weather_dates)} new dates: {new_weather_dates}")
 
     
-    new_nyc_count = populate_nyc_crashes(master_dates, max_new_dates=25)
+    new_nyc_count = populate_nyc_crashes(master_dates, max_new_dates=6)
     print(f"Processed {new_nyc_count} new NYC crash dates")
 
 
-    new_chi_count = populate_chi_tables(master_dates, max_new_dates=25)
+    new_chi_count = populate_chi_tables(master_dates, max_new_dates=6)
     print(f"Processed {new_chi_count} new Chicago crash dates")
 
     print("Database population complete!")
 
 if __name__ == "__main__":
-    main(run_clear=False)
+    main(run_clear=True)
