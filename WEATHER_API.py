@@ -10,13 +10,27 @@ gather_weather_daily.py
 Uses OpenWeather *History API* (hourly historical data) to populate a SQLite
 database with daily precipitation totals for New York City and Chicago.
 
-ID scheme:
-    NYC rows:    id = 1YYYYMMDD
-    Chicago rows: id = 0YYYYMMDD
+Database: weather_crashes.db
 
-So each (city, date) pair has a unique id, but you can still recover the
-date from the trailing 8 digits if you want (and you always have the `date`
-column itself for joins).
+Schema:
+
+    DayIndex(
+        id   INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT UNIQUE            -- 'YYYY-MM-DD'
+    )
+
+    NYCWeather(
+        id        INTEGER PRIMARY KEY,  -- same as DayIndex.id
+        precip_mm REAL                  -- total daily precipitation in NYC (mm)
+    )
+
+    ChicagoWeather(
+        id        INTEGER PRIMARY KEY,  -- same as DayIndex.id
+        precip_mm REAL                  -- total daily precipitation in Chicago (mm)
+    )
+
+Thus, `id` is a shared integer key across these tables (and can be reused
+by other tables, e.g., crash data), while `date` is stored once in DayIndex.
 """
 
 import sqlite3
@@ -27,7 +41,7 @@ import requests
 # CONFIG
 # -------------------------------------------------------------------
 
-DB_NAME = "date_weather_info.db"
+DB_NAME = "weather_crashes.db"
 
 # Put your real OpenWeather key here (or import from a separate file)
 OPENWEATHER_KEY = "2ac6306c04d893afe4ac7939620af863"
@@ -46,24 +60,31 @@ CHI_LAT, CHI_LON = 41.8781, -87.6298   # Downtown Chicago
 
 def init_db() -> None:
     """
-    Create the two weather tables if they don't exist.
-    Each row represents one city's weather for one date.
+    Create the date index and weather tables if they don't exist.
     """
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
 
+    # Master table for shared id/date key
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS NYCWeather (
-            id INTEGER PRIMARY KEY,
-            date TEXT UNIQUE,      -- 'YYYY-MM-DD'
-            precip_mm REAL         -- total daily precipitation in mm
+        CREATE TABLE IF NOT EXISTS DayIndex (
+            id   INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT UNIQUE          -- 'YYYY-MM-DD'
         )
     """)
 
+    # NYC weather table, keyed by DayIndex.id
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS NYCWeather (
+            id        INTEGER PRIMARY KEY,  -- references DayIndex.id
+            precip_mm REAL
+        )
+    """)
+
+    # Chicago weather table, keyed by DayIndex.id
     cur.execute("""
         CREATE TABLE IF NOT EXISTS ChicagoWeather (
-            id INTEGER PRIMARY KEY,
-            date TEXT UNIQUE,
+            id        INTEGER PRIMARY KEY,  -- references DayIndex.id
             precip_mm REAL
         )
     """)
@@ -73,25 +94,8 @@ def init_db() -> None:
 
 
 # -------------------------------------------------------------------
-# DATE / ID HELPERS
+# DATE HELPERS
 # -------------------------------------------------------------------
-
-def date_to_id(d: date, city_prefix: str) -> int:
-    """
-    Turn a date into a unique integer id with a city prefix.
-
-    For example, for 2025-12-10:
-        city_prefix = "1" (NYC)  -> id = 120251210
-        city_prefix = "0" (CHI)  -> id = 020251210 -> int(...) = 20251210
-
-    This guarantees:
-        - IDs for NYC and Chicago are different for the same date.
-        - You can still join on `date` for cross-city comparisons.
-    """
-    base = d.strftime("%Y%m%d")          # 'YYYYMMDD'
-    id_str = f"{city_prefix}{base}"      # e.g. '1YYYYMMDD' or '0YYYYMMDD'
-    return int(id_str)
-
 
 def days_between(start: date, end: date) -> list[date]:
     """
@@ -188,14 +192,14 @@ def populate_weather_for_dates(date_list: list[date],
                                max_days: int = 25) -> list[str]:
     """
     For each date in date_list, fetch historical hourly weather for NYC
-    and Chicago and insert daily precipitation totals into their tables.
+    and Chicago and insert daily precipitation totals into the DB.
 
-    - NYC id  = 1YYYYMMDD
-    - CHI id  = 0YYYYMMDD
-    - precip_mm = total precipitation for that date in that city (mm)
+    - DayIndex.id is an auto-incremented shared key for the date
+    - NYCWeather.id  = DayIndex.id, precip_mm = NYC total precip
+    - ChicagoWeather.id = DayIndex.id, precip_mm = Chicago total precip
 
     We:
-      * skip dates that are already present in NYCWeather
+      * skip dates that are already present in DayIndex
       * process at most max_days *new* dates per run
       * always fetch weather for both cities when we process a date
 
@@ -208,8 +212,8 @@ def populate_weather_for_dates(date_list: list[date],
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
 
-    # Find which dates we already have for NYC (assume Chicago is in sync)
-    cur.execute("SELECT date FROM NYCWeather")
+    # Find which dates we already have in the index
+    cur.execute("SELECT date FROM DayIndex")
     existing_dates = {row[0] for row in cur.fetchall()}
 
     processed = 0
@@ -218,34 +222,40 @@ def populate_weather_for_dates(date_list: list[date],
     for d in sorted(date_list):
         date_str = d.isoformat()  # 'YYYY-MM-DD'
 
-        # If NYC already has this date, assume we don't need to redo it
+        # Skip dates that already exist
         if date_str in existing_dates:
             continue
 
         if processed >= max_days:
             break
 
-        # City-specific IDs with prefix:
-        nyc_id = date_to_id(d, "1")
-        chi_id = date_to_id(d, "0")
+        # 1) Ensure the date exists in DayIndex, get its shared id
+        cur.execute("INSERT OR IGNORE INTO DayIndex (date) VALUES (?)", (date_str,))
+        cur.execute("SELECT id FROM DayIndex WHERE date = ?", (date_str,))
+        row = cur.fetchone()
+        if row is None:
+            # Shouldn't happen, but just in case
+            continue
+        shared_id = row[0]
 
-        # --- NYC ---
+        # 2) Fetch & compute NYC precip
         nyc_json = fetch_history_for_day(NYC_LAT, NYC_LON, d)
         nyc_precip = precip_from_history_json(nyc_json)
 
-        cur.execute("""
-            INSERT OR IGNORE INTO NYCWeather (id, date, precip_mm)
-            VALUES (?, ?, ?)
-        """, (nyc_id, date_str, nyc_precip))
-
-        # --- CHICAGO ---
+        # 3) Fetch & compute Chicago precip
         chi_json = fetch_history_for_day(CHI_LAT, CHI_LON, d)
         chi_precip = precip_from_history_json(chi_json)
 
+        # 4) Insert one row per city, sharing the same id
         cur.execute("""
-            INSERT OR IGNORE INTO ChicagoWeather (id, date, precip_mm)
-            VALUES (?, ?, ?)
-        """, (chi_id, date_str, chi_precip))
+            INSERT OR REPLACE INTO NYCWeather (id, precip_mm)
+            VALUES (?, ?)
+        """, (shared_id, nyc_precip))
+
+        cur.execute("""
+            INSERT OR REPLACE INTO ChicagoWeather (id, precip_mm)
+            VALUES (?, ?)
+        """, (shared_id, chi_precip))
 
         processed += 1
         processed_dates.append(date_str)
@@ -258,17 +268,57 @@ def populate_weather_for_dates(date_list: list[date],
 
 def clear_weather_tables() -> None:
     """
-    Delete all rows from the NYCWeather and ChicagoWeather tables.
+    Delete all rows from DayIndex, NYCWeather, and ChicagoWeather.
     Use this if you want to completely rebuild the weather data.
     """
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
 
+    # Make sure tables exist before deleting (in case DB is fresh)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS DayIndex (
+            id   INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT UNIQUE
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS NYCWeather (
+            id        INTEGER PRIMARY KEY,
+            precip_mm REAL
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS ChicagoWeather (
+            id        INTEGER PRIMARY KEY,
+            precip_mm REAL
+        )
+    """)
+
+    # Now clear the data
+    cur.execute("DELETE FROM DayIndex")
     cur.execute("DELETE FROM NYCWeather")
     cur.execute("DELETE FROM ChicagoWeather")
 
     conn.commit()
     conn.close()
+    print("All rows cleared from DayIndex, NYCWeather, and ChicagoWeather.")
+
+
+def drop_legacy_weather_tables() -> None:
+    """
+    Permanently drop old/unused weather tables from the database.
+    Call this once after you change schema and no longer need them.
+    """
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+
+    # Try both possible old names, just in case:
+    cur.execute("DROP TABLE IF EXISTS WeatherDaily")
+    cur.execute("DROP TABLE IF EXISTS DailyWeather")
+
+    conn.commit()
+    conn.close()
+    print("Legacy weather tables (WeatherDaily/DailyWeather) dropped if they existed.")
 
 
 # -------------------------------------------------------------------
@@ -276,9 +326,12 @@ def clear_weather_tables() -> None:
 # -------------------------------------------------------------------
 
 if __name__ == "__main__":
+    # 0. (Optional) clean up old tables that are no longer used
+    #drop_legacy_weather_tables()
+
     # 1. Ensure tables exist
     init_db()
-    # clear_weather_tables()
+    clear_weather_tables()
 
     # 2. Build list of ALL days in the last 100 days (inclusive of end_date)
     today = date.today()
