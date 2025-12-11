@@ -10,11 +10,10 @@ from datetime import datetime
 #TABLE CREATION 
 
 def clear_tables():
-    """Drop all tables in the weather_crashes.db database."""
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
 
-    tables = ["injury_stats", "date_info", "crash_info", "crash_more" ]  # Add any future tables here
+    tables = ["nyc_crash_stats"] 
     for table in tables:
         cur.execute(f"DROP TABLE IF EXISTS {table}")
 
@@ -24,35 +23,23 @@ def clear_tables():
 
 
 
-def create_tables():
+def create_table():
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
 
-    # Drop tables if they exist
-    cur.execute("DROP TABLE IF EXISTS injury_stats")
-    cur.execute("DROP TABLE IF EXISTS date_info")
-
-    # Table 1: date_info now also holds total_crashes
-    cur.execute(""" 
-        CREATE TABLE date_info (
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS nyc_crash_stats (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT UNIQUE,
-            total_crashes INTEGER
-        )
-    """)
-
-    # Table 2: injury_stats
-    cur.execute("""
-        CREATE TABLE injury_stats (
-            date_id INTEGER PRIMARY KEY,
+            total_crashes INTEGER,
             total_injuries INTEGER,
-            total_killed INTEGER,
-            FOREIGN KEY(date_id) REFERENCES date_info(id)
+            total_fatalities INTEGER
         )
     """)
 
     conn.commit()
     conn.close()
+    print("Table 'nyc_crash_stats' ready.")
 
 
 
@@ -124,96 +111,15 @@ def check_crash_data(api_data):
     return total_crashes, total_injuries, total_fatalities
 
 
-
-
-
-
-
-
-
-
-#OLD CLEANING 
-''' 
-def check_crash_data(api_data):
-    cleaned_rows = []
-    for row in api_data:
-        try: 
-            collision_id = row.get("collision_id")
-            location = row.get("location")
-            crash_date = row.get("crash_date")
-            crash_time = row.get("crash_time")
-
-            if not collision_id or not location or not crash_date or not crash_time:
-                continue
-
-           
-            date_part = crash_date.split("T")[0]      
-            time_part = crash_time                    
-
-            try:
-                dt = datetime.strptime(f"{date_part} {time_part}", "%Y-%m-%d %H:%M")
-            except ValueError:
-                continue
-
-            crash_date_str = date_part  
-
-            if not (6 <= dt.hour < 18):
-                continue
-
-            try:
-                number_of_persons_injured = int(row.get("number_of_persons_injured", 0))
-                if number_of_persons_injured == 0:
-                    continue 
-            except (TypeError, ValueError):
-                continue 
-            
-            try:
-                number_of_persons_killed = int(row.get("number_of_persons_killed", 0))
-            except (TypeError, ValueError):
-                number_of_persons_killed = 0
-            if isinstance(location, dict):
-                lat = location.get("latitude")
-                lon = location.get("longitude")
-                location = f"{lat}, {lon}"
-
-            cleaned_rows.append({
-                "collision_id": collision_id,
-                "location": location,
-                "crash_date": crash_date_str,
-                "number_of_persons_injured": number_of_persons_injured,
-                "number_of_persons_killed": number_of_persons_killed
-            })
-
-        except Exception:
-            continue
-    return cleaned_rows'''
-
-def get_or_create_date(date_str, total_crashes):
+def insert_weather_stats(date_str, total_crashes, total_injuries, total_fatalities):
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
 
     cur.execute("""
-        INSERT OR IGNORE INTO date_info (date, total_crashes)
-        VALUES (?, ?)
-    """, (date_str, total_crashes))
-
-    # Get the date_id
-    cur.execute("SELECT id FROM date_info WHERE date = ?", (date_str,))
-    date_id = cur.fetchone()[0]
-
-    conn.commit()
-    conn.close()
-    return date_id
-
-def insert_injury_stats(date_id, total_injuries, total_fatalities):
-    
-    conn = sqlite3.connect("weather_crashes.db")
-    cur = conn.cursor()
-
-    cur.execute("""
-        INSERT OR REPLACE INTO injury_stats (date_id, total_injuries, total_killed)
-        VALUES (?, ?, ?)
-    """, (date_id, total_injuries, total_fatalities))
+        INSERT OR REPLACE INTO nyc_crash_stats
+        (date, total_crashes, total_injuries, total_fatalities)
+        VALUES (?, ?, ?, ?)
+    """, (date_str, total_crashes, total_injuries, total_fatalities))
 
     conn.commit()
     conn.close()
@@ -222,111 +128,63 @@ def insert_injury_stats(date_id, total_injuries, total_fatalities):
 
 
 
-
-
-
-'''#DATA INSERTION
-def insert_crash_info(crash):
-    conn = sqlite3.connect("weather_crashes.db")
-    cur = conn.cursor()
-    
-    cur.execute(""" INSERT OR IGNORE INTO crash_info (collision_id,location,crash_date) VALUES (?, ?, ?)""",(crash['collision_id'], crash['location'], crash['crash_date']))
-    
-    conn.commit()
-    
-    crash_info_id = cur.lastrowid
-    conn.close()
-    
-    return crash_info_id
-
-def insert_crash_more(crash, crash_info_id):
-    conn = sqlite3.connect("weather_crashes.db")
-    cur = conn.cursor()
-    cur.execute(""" 
-        INSERT OR IGNORE INTO crash_more (crash_info_id, number_of_persons_injured, number_of_persons_killed)
-        VALUES (?,?,?)""",
-        (crash_info_id, crash['number_of_persons_injured'], crash['number_of_persons_killed'])
-    )
-    
-    conn.commit()
-    conn.close()
-
-def get_crashes_for_dates(dates):
+def date_already_processed(date_str):
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
 
-    holders = ",".join("?" for _ in dates)
-    query = f"""
-        SELECT ci.id, ci.collision_id, ci.location, ci.crash_date,
-               cm.number_of_persons_injured, cm.number_of_persons_killed
-        FROM crash_info ci
-        JOIN crash_more cm ON ci.id = cm.crash_info_id
-        WHERE ci.crash_date IN ({holders})
-    """
-    cur.execute(query,dates)
-    rows = cur.fetchall()
+    cur.execute("SELECT 1 FROM nyc_crash_stats WHERE date = ?", (date_str,))
+    row = cur.fetchone()
+
     conn.close()
-
-    crashes = []
-    for r in rows:
-        crashes.append({
-            "id": r[0],
-            "collision_id": r[1],
-            "location": r[2],
-            "crash_date": r[3],
-            "number_of_persons_injured": r[4],
-            "number_of_persons_killed": r[5]
-        })
-    return crashes'''
-
-
-
+    return row is not None
 
 def main():
-    clear_tables()
-    create_tables()
+    # Clear old table and create the merged table
+    #clear_tables()
+    create_table()
 
-    
     batch_size = 1000
     target_dates = [
-    "2025-11-15",
-    "2025-11-16",
-    "2025-11-17",
-    "2025-11-18",
-    "2025-11-19",
-    "2025-11-20",
-    "2025-11-21",
-    "2025-11-22",
-    "2025-11-23",
-    "2025-11-24",
-    "2025-11-25",
-    "2025-11-26",
-    "2025-11-27",
-    "2025-11-28",
-    "2025-11-29",
-    "2025-11-30",
-    "2025-12-01",
-    "2025-12-02",
-    "2025-12-03",
-    "2025-12-04",
-    "2025-12-05",
-    "2025-12-06",
-    "2025-10-05",
-    "2025-10-10",
-    "2025-10-23"]
-    for date_str in target_dates[:25]:
+    "2025-11-01","2025-11-02","2025-11-03","2025-11-04","2025-11-05",
+    "2025-11-06","2025-11-07","2025-11-08","2025-11-09","2025-11-10",
+    "2025-11-11","2025-11-12","2025-11-13","2025-11-14","2025-11-15",
+    "2025-11-16","2025-11-17","2025-11-18","2025-11-19","2025-11-20",
+    "2025-11-21","2025-11-22","2025-11-23","2025-11-24","2025-11-25",
+    "2025-11-26","2025-11-27","2025-11-28","2025-11-29","2025-11-30",
+    "2025-12-01"
+]
+
+    
+
+    max_new_dates = 25
+    new_dates_added = 0
+
+    for date_str in target_dates:
+        if new_dates_added >= max_new_dates:
+            print("API population limit reached. Exiting...")
+            break
+
+        if date_already_processed(date_str):
+            continue
+
         where_clause = f"crash_date >= '{date_str}T00:00:00' AND crash_date < '{date_str}T23:59:59'"
         raw_data = fetch_nyc_crashes(limit=batch_size, where=where_clause)
 
         if not raw_data:
-            print(f"No data returned from {date_str}.")
+            print(f"No data returned for {date_str}.")
             continue
 
         total_crashes, total_injuries, total_fatalities = check_crash_data(raw_data)
-        date_id = get_or_create_date(date_str, total_crashes)
-        insert_injury_stats(date_id, total_injuries, total_fatalities)
+
+        if total_crashes == 0:
+            print(f"No crashes for {date_str}. Skipping insert.")
+            continue
+
+        insert_weather_stats(date_str, total_crashes, total_injuries, total_fatalities)
+        new_dates_added += 1
 
         print(f"Inserted data for {date_str}")
+
 
 
 
