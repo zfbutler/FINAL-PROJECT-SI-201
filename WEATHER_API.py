@@ -1,45 +1,56 @@
 """
 gather_weather_daily.py
 
-Uses OpenWeather One Call 3.0 *Daily Aggregation* API to populate a SQLite
+Uses OpenWeather *History API* (hourly historical data) to populate a SQLite
 database with daily precipitation totals for New York City and Chicago.
 
-- Two tables: NYCWeather and ChicagoWeather
-- Columns in each table:
-    id           INTEGER  (YYYYMMDD, shared across tables for the same date)
-    date         TEXT     ('YYYY-MM-DD')
-    precip_mm    REAL     (total liquid-equivalent precipitation for that day)
+Endpoint docs:
+    https://openweathermap.org/history
 
-Main function:
+We use the hourly history endpoint:
+    https://history.openweathermap.org/data/2.5/history/city
+        ?lat={lat}&lon={lon}&type=hour&start={start}&end={end}&appid={API key}
+
+For each date, we:
+    - request all hourly observations for that 24-hour window
+    - sum rain["1h"] + snow["1h"] across all hours to get daily precip in mm
+    - store one row per city per date in SQLite.
+
+Tables:
+    NYCWeather(id INTEGER PRIMARY KEY,
+               date TEXT UNIQUE,   -- 'YYYY-MM-DD'
+               precip_mm REAL)     -- total daily precipitation in mm
+
+    ChicagoWeather(id INTEGER PRIMARY KEY,
+                   date TEXT UNIQUE,
+                   precip_mm REAL)
+
+Main public function:
     populate_weather_for_dates(date_list, max_days=25) -> list[str]
 
-    - date_list: list of datetime.date objects
-    - max_days:  maximum number of *new* dates to fetch per run
-    - returns:   list of 'YYYY-MM-DD' strings for dates actually inserted
-
-You can import `populate_weather_for_dates` in other files and use the
-returned date strings to drive your crash-data API calls.
+    - date_list: list[datetime.date]
+    - max_days: maximum number of *new* dates to fetch per run
+    - returns: list of 'YYYY-MM-DD' strings for which rows were actually
+               inserted (can be used by other API files to align dates).
 """
 
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import requests
 
 # -------------------------------------------------------------------
 # CONFIG
 # -------------------------------------------------------------------
 
-DB_NAME = "project.db"
+DB_NAME = "date_weather_info.db"
 
-# Put your real OpenWeather key here or import from a separate file
-OPENWEATHER_KEY = "YOUR_REAL_KEY_HERE"
+# Put your real OpenWeather key here (or import from a separate file)
+OPENWEATHER_KEY = "2ac6306c04d893afe4ac7939620af863"
 
-# Daily aggregation endpoint (One Call 3.0)
-BASE_URL = "https://api.openweathermap.org/data/3.0/onecall/day_summary"
+# History API (hourly) base URL
+BASE_URL = "https://history.openweathermap.org/data/2.5/history/city"
 
 # Representative points for each city (central locations)
-# These are just good "city weather" points – OpenWeather aggregates
-# from their own grid internally.
 NYC_LAT, NYC_LON = 40.7812, -73.9665   # Central Park area, NYC
 CHI_LAT, CHI_LON = 41.8781, -87.6298   # Downtown Chicago
 
@@ -103,51 +114,96 @@ def mondays_between(start: date, end: date) -> list[date]:
     return days
 
 
+def day_unix_range(d: date) -> tuple[int, int]:
+    """
+    Given a calendar date, return (start_ts, end_ts) as Unix timestamps
+    for the 24-hour period [00:00, 24:00) in UTC.
+
+    History API expects 'start' and 'end' as unix time, UTC.
+    """
+    start_dt = datetime(d.year, d.month, d.day, 0, 0, tzinfo=timezone.utc)
+    end_dt = start_dt + timedelta(days=1)
+    return int(start_dt.timestamp()), int(end_dt.timestamp())
+
+
 # -------------------------------------------------------------------
-# OPENWEATHER DAILY AGGREGATION HELPERS
+# OPENWEATHER HISTORY API HELPERS
 # -------------------------------------------------------------------
 
-def fetch_daily_weather(lat: float, lon: float, d: date) -> dict:
+def fetch_history_for_day(lat: float, lon: float, d: date) -> dict:
     """
-    Call OpenWeather One Call 3.0 Daily Aggregation endpoint for a single
-    latitude/longitude and calendar date.
+    Call OpenWeather History API (hourly) for a single latitude/longitude
+    and calendar date.
 
-    The API expects date as 'YYYY-MM-DD'.
+    We request all hourly data between start=midnight and end=next-midnight
+    in UTC, then later sum up rain/snow to get daily precipitation.
     """
-    date_str = d.isoformat()  # 'YYYY-MM-DD'
+    start_ts, end_ts = day_unix_range(d)
 
     params = {
         "lat": lat,
         "lon": lon,
-        "date": date_str,
+        "type": "hour",
+        "start": start_ts,
+        "end": end_ts,
         "appid": OPENWEATHER_KEY,
-        "units": "metric"  # affects temp/wind; precip is still mm
+        "units": "metric",  # optional; precip is still mm
     }
 
     resp = requests.get(BASE_URL, params=params)
-    resp.raise_for_status()
+
+    if resp.status_code != 200:
+        print("OpenWeather History error for", d.isoformat())
+        print("Final URL:", resp.url)
+        print("Status code:", resp.status_code)
+        print("Response body:", resp.text)
+        resp.raise_for_status()
+
     return resp.json()
 
 
-def precip_from_daily_json(daily_json: dict) -> float:
+def precip_from_history_json(history_json: dict) -> float:
     """
-    Given the JSON from the Daily Aggregation endpoint, return the total
+    Given the JSON from the History API hourly endpoint, return the total
     precipitation for that day in millimetres.
 
-    Example response snippet:
+    Response structure (simplified):
 
-        "precipitation": {
-            "total": 0
+        {
+            "message": "Count: 24",
+            "cod": "200",
+            "cnt": 24,
+            "list": [
+                {
+                    "dt": 1573838400,
+                    "rain": { "1h": 0.9 },
+                    "snow": { "1h": 0.0 },
+                    ...
+                },
+                ...
+            ]
         }
 
-    If precipitation.total is missing, we treat it as 0.0.
+    We sum rain["1h"] + snow["1h"] for each hourly entry in "list".
     """
-    precip_obj = daily_json.get("precipitation", {})
-    total = precip_obj.get("total", 0.0)
-    try:
-        return float(total)
-    except (TypeError, ValueError):
-        return 0.0
+    total_precip = 0.0
+
+    for entry in history_json.get("list", []):
+        rain = entry.get("rain", {})
+        snow = entry.get("snow", {})
+
+        # Rain volume for the last 1 hour, mm
+        r = rain.get("1h", 0.0) or 0.0
+        # Snow volume for the last 1 hour, mm
+        s = snow.get("1h", 0.0) or 0.0
+
+        try:
+            total_precip += float(r) + float(s)
+        except (TypeError, ValueError):
+            # If something is weird in the data, skip that hour
+            continue
+
+    return total_precip
 
 
 # -------------------------------------------------------------------
@@ -157,8 +213,8 @@ def precip_from_daily_json(daily_json: dict) -> float:
 def populate_weather_for_dates(date_list: list[date],
                                max_days: int = 25) -> list[str]:
     """
-    For each date in date_list, fetch daily aggregated weather for NYC
-    and Chicago and insert into their respective tables.
+    For each date in date_list, fetch historical hourly weather for NYC
+    and Chicago and insert daily precipitation totals into their tables.
 
     - id = YYYYMMDD, shared across both tables for that date
     - precip_mm = total precipitation for that date in that city (mm)
@@ -197,8 +253,8 @@ def populate_weather_for_dates(date_list: list[date],
         day_id = date_to_id(d)
 
         # --- NYC ---
-        nyc_json = fetch_daily_weather(NYC_LAT, NYC_LON, d)
-        nyc_precip = precip_from_daily_json(nyc_json)
+        nyc_json = fetch_history_for_day(NYC_LAT, NYC_LON, d)
+        nyc_precip = precip_from_history_json(nyc_json)
 
         cur.execute("""
             INSERT OR IGNORE INTO NYCWeather (id, date, precip_mm)
@@ -206,8 +262,8 @@ def populate_weather_for_dates(date_list: list[date],
         """, (day_id, date_str, nyc_precip))
 
         # --- CHICAGO ---
-        chi_json = fetch_daily_weather(CHI_LAT, CHI_LON, d)
-        chi_precip = precip_from_daily_json(chi_json)
+        chi_json = fetch_history_for_day(CHI_LAT, CHI_LON, d)
+        chi_precip = precip_from_history_json(chi_json)
 
         cur.execute("""
             INSERT OR IGNORE INTO ChicagoWeather (id, date, precip_mm)
@@ -233,8 +289,8 @@ if __name__ == "__main__":
 
     # 2. Choose the dates you care about
     #    (here, all Mondays between Oct 1 and Dec 31, 2023)
-    start_date = date(2023, 10, 1)
-    end_date = date(2023, 12, 31)
+    start_date = date(2025, 9, 1)
+    end_date = date(2025, 11, 20)
     monday_dates = mondays_between(start_date, end_date)
 
     # 3. Populate weather tables and get back the list of dates used
