@@ -14,7 +14,7 @@ def clear_chi_tables():
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
 
-    tables = ["chi_injury_stats", "chi_date_info"]
+    tables = ["chi_injury_stats", "chi_date_info", "chi_crash_data"]
     for table in tables:
         cur.execute(f"DROP TABLE IF EXISTS {table}")
 
@@ -29,20 +29,12 @@ def create_tables():
 
     # Table 1: date_info with total_crashes
     cur.execute(""" 
-        CREATE TABLE IF NOT EXISTS chi_date_info (
+        CREATE TABLE IF NOT EXISTS chi_crash_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT UNIQUE,
-            total_crashes INTEGER
-        )
-    """)
-
-    # Table 2: injury_stats
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS chi_injury_stats (
-            date_id INTEGER PRIMARY KEY,
+            total_crashes INTEGER,
             total_injuries INTEGER,
-            total_killed INTEGER,
-            FOREIGN KEY(date_id) REFERENCES date_info(id)
+            total_fatalities INTEGER
         )
     """)
 
@@ -110,49 +102,32 @@ def collect_crash_data(api_data):
     return total_crashes, total_injuries, total_fatalities
 
 #inserts data into the chi_data_data and returns a 
-def insert_date_data(date_str, total_crashes):
+def insert_chi_crashdata(date_str, total_crashes, total_injuries, total_fatalities):
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
 
     cur.execute("""
-        INSERT OR IGNORE INTO chi_date_info (date, total_crashes)
-        VALUES (?, ?)
-    """, (date_str, total_crashes))
-
-    # Get the date_id
-    cur.execute("SELECT id FROM chi_date_info WHERE date = ?", (date_str,))
-    date_id = cur.fetchone()[0]
+        INSERT OR IGNORE INTO chi_crash_data (date, total_crashes, total_injuries, total_fatalities)
+        VALUES (?, ?, ?, ?)
+    """, (date_str, total_crashes, total_injuries, total_fatalities))
 
     conn.commit()
     conn.close()
-    return date_id
-
-def insert_injury_data(date_id, total_injuries, total_fatalities):
-    
-    conn = sqlite3.connect("weather_crashes.db")
-    cur = conn.cursor()
-
-    cur.execute("""
-        INSERT OR REPLACE INTO chi_injury_stats (date_id, total_injuries, total_killed)
-        VALUES (?, ?, ?)
-    """, (date_id, total_injuries, total_fatalities))
-
-    conn.commit()
-    conn.close()
+    return
 
 #helper function to ensure repeat dates are not added to db for each run
 def date_already_processed(date_str):
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
 
-    cur.execute("SELECT 1 FROM chi_date_info WHERE date = ?", (date_str,))
+    cur.execute("SELECT 1 FROM chi_crash_data WHERE date = ?", (date_str,))
     row = cur.fetchone()
 
     conn.close()
     return row is not None
 
 def main():
-    #clear_chi_tables()
+    clear_chi_tables()
     create_tables()
 
     batch_size = 1000
@@ -222,8 +197,7 @@ def main():
             continue
 
         total_crashes, total_injuries, total_fatalities = collect_crash_data(raw_data)
-        date_id = insert_date_data(date_str, total_crashes)
-        insert_injury_data(date_id, total_injuries, total_fatalities)
+        insert_chi_crashdata(date_str, total_crashes, total_injuries, total_fatalities)
 
         new_dates_added += 1
 
