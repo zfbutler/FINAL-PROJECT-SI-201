@@ -22,7 +22,7 @@ def clear_chi_tables():
     conn.close()
     print("All tables cleared.")
 
-def create_tables():
+def create_chi_tables():
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
 
@@ -125,11 +125,9 @@ def date_already_processed(date_str):
     conn.close()
     return row is not None
 
-def populate_tables(target_dates):
-    create_tables()
+def populate_chi_tables(target_dates, max_new_dates=25):
+    create_chi_tables()
     batch_size = 1000
-
-    max_new_dates = 25
     new_dates_added = 0
     
     for date_str in target_dates:
@@ -158,7 +156,7 @@ def populate_tables(target_dates):
 
 def main():
     #clear_chi_tables()
-    populate_tables(target_dates)
+    populate_chi_tables(target_dates)
 
 if __name__ == "__main__":
     main()

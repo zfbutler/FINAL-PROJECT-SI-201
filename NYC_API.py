@@ -10,7 +10,7 @@ from datetime import datetime
 
 
 #CLEAR TABLES BEFORE FINAL RUN 
-def clear_tables():
+def clear_nyc_tables():
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
 
@@ -136,6 +136,7 @@ def date_already_processed(date_str):
     return row is not None
 
 def populate_nyc_crashes(date_list, max_new_dates=25):
+    create_nyc_table()
     new_dates_added = 0
 
     for date_str in date_list:

@@ -18,7 +18,7 @@ BASE_URL = "https://history.openweathermap.org/data/2.5/history/city"
 NYC_LAT, NYC_LON = 40.7812, -73.9665   
 CHI_LAT, CHI_LON = 41.8781, -87.6298   
 
-def init_db():
+def create_weather_tables():
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
 
