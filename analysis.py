@@ -128,11 +128,8 @@ def chi_crash_weather_corr(data):
         f"This indicates a {strength} relationship between Chicago Traffic Crashes and Precipitation.\n"
     )
 
-    with open("r_results.txt", "a") as f:
+    with open("results.txt", "a") as f:
         f.write(message)
-
-    print("Wrote:", message)
-
     
     plt.figure(figsize=(10, 6))
     plt.scatter(chi_precip, chi_crashes)
@@ -152,10 +149,68 @@ def chi_crash_weather_corr(data):
 
     plt.show()
 
+def rainy_vs_dry_barchart(data):
+    nyc_precip = data["nyc"]["precip"]
+    nyc_crashes = data["nyc"]["crashes"]
+
+    chi_precip = data["chi"]["precip"]
+    chi_crashes = data["chi"]["crashes"]
+
+    nyc_rainy = []
+    nyc_dry = []
+
+    for i in range(len(nyc_precip)):
+        if nyc_precip[i] > 0:
+            nyc_rainy.append(nyc_crashes[i])
+        else:
+            nyc_dry.append(nyc_crashes[i])
+
+    #calculate nyc average crashes
+    nyc_rain_avg = sum(nyc_rainy) / len(nyc_rainy) if len(nyc_rainy) > 0 else 0
+    nyc_dry_avg  = sum(nyc_dry) / len(nyc_dry) if len(nyc_dry) > 0 else 0
+
+    chi_rainy = []
+    chi_dry = []
+
+    #get Chicago rainy vs dry lists
+    for i in range(len(chi_precip)):
+        if chi_precip[i] > 0:
+            chi_rainy.append(chi_crashes[i])
+        else:
+            chi_dry.append(chi_crashes[i])
+
+    #average chicago rain amount
+    chi_rain_avg = sum(chi_rainy) / len(chi_rainy) if len(chi_rainy) > 0 else 0
+    chi_dry_avg  = sum(chi_dry) / len(chi_dry) if len(chi_dry) > 0 else 0
+
+    #create message for analysis and write to results file
+    message = (
+        f"NYC Rain Avg: {nyc_rain_avg:.2f}, NYC Dry Avg: {nyc_dry_avg:.2f}\n"
+        f"Chicago Rain Avg: {chi_rain_avg:.2f}, Chicago Dry Avg: {chi_dry_avg:.2f}\n\n"
+    )
+
+    with open("results.txt", "a") as f:
+        f.write(message)
+
+    #create bar graph plot
+    labels = ["NYC Rain", "NYC Dry", "Chicago Rain", "Chicago Dry"]
+    averages = [nyc_rain_avg, nyc_dry_avg, chi_rain_avg, chi_dry_avg]
+
+    plt.figure(figsize=(10, 6))
+    #AI used to suggest colors
+    plt.bar(labels, averages, color=["skyblue", "steelblue", "lightcoral", "indianred"])
+
+    plt.ylabel("Average Crashes")
+    plt.title("Average Crash Count: Rainy vs Dry Days (NYC & Chicago)")
+    plt.tight_layout()
+    plt.show()
+
+
 def main():
     loaded_data = load_data_for_analysis()
     chi_crash_weather_corr(loaded_data)
     nyc_crash_weather_corr(loaded_data)
+    rainy_vs_dry_barchart(loaded_data)
     
 
 
