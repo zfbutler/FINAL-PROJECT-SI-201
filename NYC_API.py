@@ -5,6 +5,7 @@ import os
 import json
 from requests.auth import HTTPBasicAuth
 from datetime import datetime
+from WEATHER_API import used_dates
 
 
 #TABLE CREATION 
@@ -143,22 +144,12 @@ def main():
     create_table()
 
     batch_size = 1000
-    target_dates = [
-    "2025-11-01","2025-11-02","2025-11-03","2025-11-04","2025-11-05",
-    "2025-11-06","2025-11-07","2025-11-08","2025-11-09","2025-11-10",
-    "2025-11-11","2025-11-12","2025-11-13","2025-11-14","2025-11-15",
-    "2025-11-16","2025-11-17","2025-11-18","2025-11-19","2025-11-20",
-    "2025-11-21","2025-11-22","2025-11-23","2025-11-24","2025-11-25",
-    "2025-11-26","2025-11-27","2025-11-28","2025-11-29","2025-11-30",
-    "2025-12-01"
-]
-
     
 
     max_new_dates = 25
     new_dates_added = 0
 
-    for date_str in target_dates:
+    for date_str in used_dates:
         if new_dates_added >= max_new_dates:
             print("API population limit reached. Exiting...")
             break
@@ -187,5 +178,5 @@ def main():
 
 
 
-if __name__ == "__main__":
-    main()
+    if __name__ == "__main__":
+        main()
