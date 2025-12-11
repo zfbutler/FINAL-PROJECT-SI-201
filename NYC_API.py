@@ -8,8 +8,9 @@ from datetime import datetime
 from WEATHER_API import used_dates
 
 
-#TABLE CREATION 
 
+
+#CLEAR TABLES BEFORE FINAL RUN 
 def clear_tables():
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
@@ -24,10 +25,9 @@ def clear_tables():
 
 
 
-def create_table():
+def create_nyc_table():
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
-
     cur.execute("""
         CREATE TABLE IF NOT EXISTS nyc_crash_stats (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,7 +40,7 @@ def create_table():
 
     conn.commit()
     conn.close()
-    print("Table 'nyc_crash_stats' ready.")
+    
 
 
 
@@ -77,8 +77,6 @@ def fetch_nyc_crashes(limit=1000,offset=0, where=None, select=None, order=None):
     
 #DATA CLEANING 
 def check_crash_data(api_data):
-    
-    
     total_crashes = 0
     total_injuries = 0 
     total_fatalities = 0 
@@ -134,46 +132,44 @@ def date_already_processed(date_str):
     cur = conn.cursor()
 
     cur.execute("SELECT 1 FROM nyc_crash_stats WHERE date = ?", (date_str,))
-    row = cur.fetchone()
-
+    row = cur.fetchone() 
     conn.close()
     return row is not None
 
-def main():
-    clear_tables()
-    create_table()
-
-    batch_size = 1000
-    
-
-    max_new_dates = 25
+def populate_nyc_crashes(date_list, max_new_dates=25):
     new_dates_added = 0
 
-    for date_str in used_dates:
+    for date_str in date_list:
         if new_dates_added >= max_new_dates:
-            print("API population limit reached. Exiting...")
             break
-
+        
         if date_already_processed(date_str):
             continue
 
         where_clause = f"crash_date >= '{date_str}T00:00:00' AND crash_date < '{date_str}T23:59:59'"
-        raw_data = fetch_nyc_crashes(limit=batch_size, where=where_clause)
-
+        raw_data = fetch_nyc_crashes(limit=1000, where=where_clause)
         if not raw_data:
-            print(f"No data returned for {date_str}.")
-            continue
+            continue  
 
         total_crashes, total_injuries, total_fatalities = check_crash_data(raw_data)
-
         if total_crashes == 0:
-            print(f"No crashes for {date_str}. Skipping insert.")
-            continue
+            continue  
 
         insert_weather_stats(date_str, total_crashes, total_injuries, total_fatalities)
         new_dates_added += 1
-
         print(f"Inserted data for {date_str}")
+
+    return new_dates_added 
+
+
+
+
+
+def main():
+    create_nyc_table()
+
+    new_count = populate_nyc_crashes(used_dates, max_new_dates=25)
+    print(f"Processed {new_count} new dates this run")
 
 
 
