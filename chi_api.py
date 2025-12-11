@@ -27,7 +27,6 @@ def create_tables():
     cur = conn.cursor()
 
 
-    # Table 1: date_info with total_crashes
     cur.execute(""" 
         CREATE TABLE IF NOT EXISTS chi_crash_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,57 +125,9 @@ def date_already_processed(date_str):
     conn.close()
     return row is not None
 
-def main():
-    clear_chi_tables()
+def populate_tables(target_dates):
     create_tables()
-
     batch_size = 1000
-    target_dates = [
-    "2025-11-15",
-    "2025-11-16",
-    "2025-11-17",
-    "2025-11-18",
-    "2025-11-19",
-    "2025-11-20",
-    "2025-11-21",
-    "2025-11-22",
-    "2025-11-23",
-    "2025-11-24",
-    "2025-11-25",
-    "2025-11-26",
-    "2025-11-27",
-    "2025-11-28",
-    "2025-11-29",
-    "2025-11-30",
-    "2025-12-01",
-    "2025-12-02",
-    "2025-12-03",
-    "2025-12-04",
-    "2025-12-05",
-    "2025-12-06",
-    "2025-10-05",
-    "2025-10-10",
-    "2025-10-23",
-    "2025-9-19",
-    "2025-10-20",
-    "2025-10-21",
-    "2025-10-22",
-    "2025-10-23",
-    "2025-10-24",
-    "2025-10-25",
-    "2025-10-26",
-    "2025-10-27",
-    "2025-10-28",
-    "2025-10-29",
-    "2025-10-30",
-    "2025-10-01",
-    "2025-10-02",
-    "2025-10-03",
-    "2025-10-04",
-    "2025-10-05",
-    "2025-10-06",
-    "2025-10-05",
-    "2025-10-10",]
 
     max_new_dates = 25
     new_dates_added = 0
@@ -202,6 +153,12 @@ def main():
         new_dates_added += 1
 
         print(f"Inserted data for {date_str}")
+    
+    return
+
+def main():
+    #clear_chi_tables()
+    populate_tables(target_dates)
 
 if __name__ == "__main__":
     main()
