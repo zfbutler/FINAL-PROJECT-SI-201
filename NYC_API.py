@@ -13,7 +13,7 @@ def clear_tables():
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
 
-    tables = ["nyc_crash_stats"] 
+    tables = ["nyc_crash_stats", "injury_stats", "date_info"] 
     for table in tables:
         cur.execute(f"DROP TABLE IF EXISTS {table}")
 
@@ -139,8 +139,7 @@ def date_already_processed(date_str):
     return row is not None
 
 def main():
-    # Clear old table and create the merged table
-    #clear_tables()
+    clear_tables()
     create_table()
 
     batch_size = 1000
