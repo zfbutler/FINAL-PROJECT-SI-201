@@ -5,7 +5,6 @@ import os
 import json
 from requests.auth import HTTPBasicAuth
 from datetime import datetime
-from WEATHER_API import used_dates
 
 
 
