@@ -135,7 +135,7 @@ def date_already_processed(date_str):
     conn.close()
     return row is not None
 
-def populate_nyc_crashes(date_list, max_new_dates=25):
+def populate_nyc_crashes(date_list, max_new_dates=6):
     create_nyc_table()
     new_dates_added = 0
 
