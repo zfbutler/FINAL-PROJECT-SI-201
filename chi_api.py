@@ -140,8 +140,19 @@ def insert_injury_data(date_id, total_injuries, total_fatalities):
     conn.commit()
     conn.close()
 
+#helper function to ensure repeat dates are not added to db for each run
+def date_already_processed(date_str):
+    conn = sqlite3.connect("weather_crashes.db")
+    cur = conn.cursor()
+
+    cur.execute("SELECT 1 FROM chi_date_info WHERE date = ?", (date_str,))
+    row = cur.fetchone()
+
+    conn.close()
+    return row is not None
+
 def main():
-    clear_chi_tables()
+    #clear_chi_tables()
     create_tables()
 
     batch_size = 1000
@@ -170,9 +181,39 @@ def main():
     "2025-12-06",
     "2025-10-05",
     "2025-10-10",
-    "2025-10-23"]
+    "2025-10-23",
+    "2025-9-19",
+    "2025-10-20",
+    "2025-10-21",
+    "2025-10-22",
+    "2025-10-23",
+    "2025-10-24",
+    "2025-10-25",
+    "2025-10-26",
+    "2025-10-27",
+    "2025-10-28",
+    "2025-10-29",
+    "2025-10-30",
+    "2025-10-01",
+    "2025-10-02",
+    "2025-10-03",
+    "2025-10-04",
+    "2025-10-05",
+    "2025-10-06",
+    "2025-10-05",
+    "2025-10-10",]
 
-    for date_str in target_dates[:25]:
+    max_new_dates = 25
+    new_dates_added = 0
+    
+    for date_str in target_dates:
+        if new_dates_added >= max_new_dates:
+            print("API population has been reached. Exiting...")
+            break
+        
+        if date_already_processed(date_str):
+            continue
+        
         where_clause = f"crash_date >= '{date_str}T00:00:00' AND crash_date < '{date_str}T23:59:59'"
         raw_data = fetch_chi_crashes(limit=batch_size, where=where_clause)
 
@@ -183,6 +224,8 @@ def main():
         total_crashes, total_injuries, total_fatalities = collect_crash_data(raw_data)
         date_id = insert_date_data(date_str, total_crashes)
         insert_injury_data(date_id, total_injuries, total_fatalities)
+
+        new_dates_added += 1
 
         print(f"Inserted data for {date_str}")
 
