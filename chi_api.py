@@ -30,10 +30,12 @@ def create_chi_tables():
     cur.execute(""" 
         CREATE TABLE IF NOT EXISTS chi_crash_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT UNIQUE,
+            nycweather_id INTEGER UNIQUE,
             total_crashes INTEGER,
             total_injuries INTEGER,
-            total_fatalities INTEGER
+            total_fatalities INTEGER,
+            FOREIGN KEY(nycweather_id) REFERENCES NYCWeather(id)
+            
         )
     """)
 
@@ -101,25 +103,25 @@ def collect_crash_data(api_data):
     return total_crashes, total_injuries, total_fatalities
 
 #inserts data into the chi_data_data and returns a 
-def insert_chi_crashdata(date_str, total_crashes, total_injuries, total_fatalities):
+def insert_chi_crashdata(nycweather_id, total_crashes, total_injuries, total_fatalities):
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
 
     cur.execute("""
-        INSERT OR IGNORE INTO chi_crash_data (date, total_crashes, total_injuries, total_fatalities)
+        INSERT OR IGNORE INTO chi_crash_data (nycweather_id, total_crashes, total_injuries, total_fatalities)
         VALUES (?, ?, ?, ?)
-    """, (date_str, total_crashes, total_injuries, total_fatalities))
+    """, (nycweather_id, total_crashes, total_injuries, total_fatalities))
 
     conn.commit()
     conn.close()
     return
 
 #helper function to ensure repeat dates are not added to db for each run
-def date_already_processed(date_str):
+def nycweather_id_already_processed(nycweather_id):
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
 
-    cur.execute("SELECT 1 FROM chi_crash_data WHERE date = ?", (date_str,))
+    cur.execute("SELECT 1 FROM chi_crash_data WHERE nycweather_id = ?", (nycweather_id,))
     row = cur.fetchone()
 
     conn.close()
@@ -127,36 +129,46 @@ def date_already_processed(date_str):
 
 def populate_chi_tables(target_dates, max_new_dates=25):
     create_chi_tables()
-    batch_size = 1000
     new_dates_added = 0
-    
+
     for date_str in target_dates:
         if new_dates_added >= max_new_dates:
-            print("API population has been reached. Exiting...")
             break
-        
-        if date_already_processed(date_str):
+
+        conn = sqlite3.connect("weather_crashes.db")
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM NYCWeather WHERE date = ?", (date_str,))
+        row = cur.fetchone()
+        conn.close()
+
+        if row is None:
             continue
-        
-        where_clause = f"crash_date >= '{date_str}T00:00:00' AND crash_date < '{date_str}T23:59:59'"
-        raw_data = fetch_chi_crashes(limit=batch_size, where=where_clause)
+
+        nycweather_id = row[0]
+
+        if nycweather_id_already_processed(nycweather_id):
+            continue
+
+        where_clause = (
+            f"crash_date >= '{date_str}T00:00:00' "
+            f"AND crash_date < '{date_str}T23:59:59'"
+        )
+        raw_data = fetch_chi_crashes(limit=1000, where=where_clause)
 
         if not raw_data:
-            print(f"No data returned from {date_str}.")
             continue
 
         total_crashes, total_injuries, total_fatalities = collect_crash_data(raw_data)
-        insert_chi_crashdata(date_str, total_crashes, total_injuries, total_fatalities)
+
+        insert_chi_crashdata(
+            nycweather_id,
+            total_crashes,
+            total_injuries,
+            total_fatalities
+        )
 
         new_dates_added += 1
+        print(f"Inserted Chicago data for {date_str}")
 
-        print(f"Inserted data for {date_str}")
-    
-    return
+    return new_dates_added
 
-def main():
-    #clear_chi_tables()
-    populate_chi_tables(target_dates)
-
-if __name__ == "__main__":
-    main()

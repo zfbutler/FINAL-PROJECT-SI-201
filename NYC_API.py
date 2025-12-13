@@ -30,10 +30,11 @@ def create_nyc_table():
     cur.execute("""
         CREATE TABLE IF NOT EXISTS nyc_crash_stats (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT UNIQUE,
+            nycweather_id INTEGER UNIQUE,
             total_crashes INTEGER,
             total_injuries INTEGER,
-            total_fatalities INTEGER
+            total_fatalities INTEGER,
+            FOREIGN KEY(nycweather_id) REFERENCES NYCWeather(id)
         )
     """)
 
@@ -109,15 +110,15 @@ def check_crash_data(api_data):
     return total_crashes, total_injuries, total_fatalities
 
 
-def insert_weather_stats(date_str, total_crashes, total_injuries, total_fatalities):
+def insert_weather_stats(nycweather_id, total_crashes, total_injuries, total_fatalities):
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
 
     cur.execute("""
         INSERT OR REPLACE INTO nyc_crash_stats
-        (date, total_crashes, total_injuries, total_fatalities)
+        (nycweather_id, total_crashes, total_injuries, total_fatalities)
         VALUES (?, ?, ?, ?)
-    """, (date_str, total_crashes, total_injuries, total_fatalities))
+    """, (nycweather_id, total_crashes, total_injuries, total_fatalities))
 
     conn.commit()
     conn.close()
@@ -126,11 +127,11 @@ def insert_weather_stats(date_str, total_crashes, total_injuries, total_fataliti
 
 
 
-def date_already_processed(date_str):
+def nycweather_id_already_processed(nycweather_id):
     conn = sqlite3.connect("weather_crashes.db")
     cur = conn.cursor()
 
-    cur.execute("SELECT 1 FROM nyc_crash_stats WHERE date = ?", (date_str,))
+    cur.execute("SELECT 1 FROM nyc_crash_stats WHERE nycweather_id = ?", (nycweather_id,))
     row = cur.fetchone() 
     conn.close()
     return row is not None
@@ -143,8 +144,19 @@ def populate_nyc_crashes(date_list, max_new_dates=6):
         if new_dates_added >= max_new_dates:
             break
         
-        if date_already_processed(date_str):
+        conn = sqlite3.connect("weather_crashes.db")
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM NYCWeather WHERE date = ?", (date_str,))
+        row = cur.fetchone()
+        conn.close()
+
+        if row is None:
             continue
+    
+        nycweather_id = row[0]
+        if nycweather_id_already_processed(nycweather_id):
+            continue
+
 
         where_clause = f"crash_date >= '{date_str}T00:00:00' AND crash_date < '{date_str}T23:59:59'"
         raw_data = fetch_nyc_crashes(limit=1000, where=where_clause)
@@ -155,7 +167,7 @@ def populate_nyc_crashes(date_list, max_new_dates=6):
         if total_crashes == 0:
             continue  
 
-        insert_weather_stats(date_str, total_crashes, total_injuries, total_fatalities)
+        insert_weather_stats(nycweather_id, total_crashes, total_injuries, total_fatalities)
         new_dates_added += 1
         print(f"Inserted data for {date_str}")
 
@@ -165,14 +177,3 @@ def populate_nyc_crashes(date_list, max_new_dates=6):
 
 
 
-def main():
-    create_nyc_table()
-
-    new_count = populate_nyc_crashes(used_dates, max_new_dates=25)
-    print(f"Processed {new_count} new dates this run")
-
-
-
-
-    if __name__ == "__main__":
-        main()

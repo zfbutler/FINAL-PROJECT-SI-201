@@ -47,14 +47,14 @@ def main(run_clear):
     print(f"Weather populated for {len(new_weather_dates)} new dates: {new_weather_dates}")
 
     
-    new_nyc_count = populate_nyc_crashes(master_dates, max_new_dates=6)
+    new_nyc_count = populate_nyc_crashes(new_weather_dates, max_new_dates=6)
     print(f"Processed {new_nyc_count} new NYC crash dates")
 
 
-    new_chi_count = populate_chi_tables(master_dates, max_new_dates=6)
+    new_chi_count = populate_chi_tables(new_weather_dates, max_new_dates=6)
     print(f"Processed {new_chi_count} new Chicago crash dates")
 
     print("Database population complete!")
 
 if __name__ == "__main__":
-    main(run_clear=True)
+    main(run_clear=False)

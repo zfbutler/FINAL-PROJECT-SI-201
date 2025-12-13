@@ -32,11 +32,12 @@ def create_weather_tables():
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS ChicagoWeather (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TEXT UNIQUE,
-        precip_mm REAL
+        id INTEGER PRIMARY KEY,
+        precip_mm REAL,
+        FOREIGN KEY(id) REFERENCES NYCWeather(id)
+
     )
-        """)
+    """)
 
 
     conn.commit()
@@ -139,9 +140,9 @@ def populate_weather_for_dates(date_list: list[date],
 
        
         cur.execute("""
-            INSERT OR REPLACE INTO ChicagoWeather (id, date, precip_mm)
-            VALUES (?, ?, ?)
-        """, (shared_id, date_str, chi_precip))
+            INSERT OR REPLACE INTO ChicagoWeather (id, precip_mm)
+            VALUES (?, ?)
+        """, (shared_id, chi_precip))
 
         processed += 1
         processed_dates.append(date_str)
@@ -168,25 +169,3 @@ def drop_legacy_weather_tables():
     conn.close()
     print("Legacy weather tables (WeatherDaily/DailyWeather) dropped if they existed.")
 
-def main():
-    
-
-    init_db()
-
-    
-
-    today = date.today()
-    end_date = today - timedelta(days=1)          
-    start_date = end_date - timedelta(days=99)    
-
-    all_dates = days_between(start_date, end_date)
-
-    used_dates = populate_weather_for_dates(all_dates, max_days=25)
-
-    print("Weather tables populated for these dates:")
-    for ds in used_dates:
-        print(ds)
-
-if __name__ == "__main__":
-    main()
-    
