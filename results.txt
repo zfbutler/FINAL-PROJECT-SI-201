@@ -1,0 +1,44 @@
+The Pearson's r value for Chicago is 0.004. This indicates a weak relationship between Chicago Traffic Crashes and Precipitation.
+
+The Pearson's r value for NYC is -0.328. This indicates a weak relationship between NYC Traffic Crashes and Precipitation.
+
+NYC Rain Avg: 141.28, NYC Dry Avg: 149.56
+Chicago Rain Avg: 193.09, Chicago Dry Avg: 204.44
+
+Dry vs Wet Crash Count Medians
+NYC - Dry: 149.50, Wet: 138.50, Difference: -11.00
+Chicago - Dry: 213.00, Wet: 185.00, Difference: -28.00
+
+Crash Count Distribution Summary
+NYC - Mean: 146.80, Std Dev: 27.34
+Chicago - Mean: 202.13, Std Dev: 42.05
+The Pearson's r value for Chicago is 0.004. This indicates a weak relationship between Chicago Traffic Crashes and Precipitation.
+
+The Pearson's r value for NYC is -0.328. This indicates a weak relationship between NYC Traffic Crashes and Precipitation.
+
+NYC Rain Avg: 141.28, NYC Dry Avg: 149.56
+Chicago Rain Avg: 193.09, Chicago Dry Avg: 204.44
+
+Dry vs Wet Crash Count Medians
+NYC - Dry: 149.50, Wet: 138.50, Difference: -11.00
+Chicago - Dry: 213.00, Wet: 185.00, Difference: -28.00
+
+Crash Count Distribution Summary
+NYC - Mean: 146.80, Std Dev: 27.34
+Chicago - Mean: 202.13, Std Dev: 42.05
+The Pearson's r value for Chicago is 0.004. This indicates a weak relationship between Chicago Traffic Crashes and Precipitation.
+The Pearson's r value for Chicago is 0.004. This indicates a weak relationship between Chicago Traffic Crashes and Precipitation.
+The Pearson's r value for Chicago is 0.004. This indicates a weak relationship between Chicago Traffic Crashes and Precipitation.
+
+The Pearson's r value for NYC is -0.328. This indicates a weak relationship between NYC Traffic Crashes and Precipitation.
+
+NYC Rain Avg: 141.28, NYC Dry Avg: 149.56
+Chicago Rain Avg: 193.09, Chicago Dry Avg: 204.44
+
+Dry vs Wet Crash Count Medians
+NYC - Dry: 149.50, Wet: 138.50, Difference: -11.00
+Chicago - Dry: 213.00, Wet: 185.00, Difference: -28.00
+
+Crash Count Distribution Summary
+NYC - Mean: 146.80, Std Dev: 27.34
+Chicago - Mean: 202.13, Std Dev: 42.05
