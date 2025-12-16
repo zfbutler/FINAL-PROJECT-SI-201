@@ -42,3 +42,17 @@ Chicago - Dry: 213.00, Wet: 185.00, Difference: -28.00
 Crash Count Distribution Summary
 NYC - Mean: 146.80, Std Dev: 27.34
 Chicago - Mean: 202.13, Std Dev: 42.05
+The Pearson's r value for Chicago is 0.046. This indicates a weak relationship between Chicago Traffic Crashes and Precipitation.
+
+The Pearson's r value for NYC is 0.085. This indicates a weak relationship between NYC Traffic Crashes and Precipitation.
+
+NYC Rain Avg: 141.80, NYC Dry Avg: 147.55
+Chicago Rain Avg: 192.57, Chicago Dry Avg: 196.42
+
+Dry vs Wet Crash Count Medians
+NYC - Dry: 150.00, Wet: 144.50, Difference: -5.50
+Chicago - Dry: 206.00, Wet: 189.50, Difference: -16.50
+
+Crash Count Distribution Summary
+NYC - Mean: 145.02, Std Dev: 27.74
+Chicago - Mean: 195.34, Std Dev: 43.08
